@@ -1,0 +1,13 @@
+{
+  "name": "feiji-mock-device",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "虚拟设备模拟器：模拟机场+无人机接入平台（MQTT）",
+  "scripts": {
+    "start": "node mock-dock.mjs"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.1"
+  }
+}

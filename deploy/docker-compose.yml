@@ -1,0 +1,71 @@
+# 无人机自控平台 MVP 基础设施
+# 用法: cd deploy && docker compose up -d
+# 注意: 若与本机已有服务的端口冲突（3306/6379/1883/80 等），先自行调整映射
+
+services:
+  emqx:
+    image: emqx/emqx:5.7.2
+    container_name: feiji-emqx
+    restart: unless-stopped
+    ports:
+      - "1883:1883"     # MQTT（设备接入）
+      - "8083:8083"     # MQTT over WebSocket
+      - "8883:8883"     # MQTT over TLS
+      - "18083:18083"   # 管理控制台 http://localhost:18083（admin/public）
+    volumes:
+      - emqx_data:/opt/emqx/data
+
+  mysql:
+    image: mysql:8.0
+    container_name: feiji-mysql
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: feiji123456
+      MYSQL_DATABASE: feiji_cloud
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:7-alpine
+    container_name: feiji-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  minio:
+    image: minio/minio:latest
+    container_name: feiji-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: feiji
+      MINIO_ROOT_PASSWORD: feiji123456
+    ports:
+      - "9000:9000"     # S3 API（媒体/航线文件，二期用）
+      - "9001:9001"     # 控制台
+    volumes:
+      - minio_data:/data
+
+  srs:
+    image: ossrs/srs:5
+    container_name: feiji-srs
+    restart: unless-stopped
+    ports:
+      - "1935:1935"       # RTMP 收流（无人机/机场推流入口）
+      - "8080:8080"       # HTTP-FLV / HLS（网页低延迟播放）
+      - "1985:1985"       # HTTP API
+      - "8000:8000/udp"   # WebRTC
+    volumes:
+      - srs_data:/data
+
+volumes:
+  emqx_data:
+  mysql_data:
+  redis_data:
+  minio_data:
+  srs_data:

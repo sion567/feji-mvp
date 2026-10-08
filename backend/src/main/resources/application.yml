@@ -1,0 +1,79 @@
+server:
+  port: 6789
+
+spring:
+  application:
+    name: feiji-cloud-backend
+  datasource:
+    url: jdbc:mysql://localhost:3306/feiji_cloud?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: feiji123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  servlet:
+    multipart:
+      max-file-size: 100MB
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    com.feiji.cloud: debug
+  file:
+    name: logs/feiji-backend.log
+
+app:
+  security:
+    admin-username: admin
+    admin-password: admin123
+    # 生产环境必须更换（HS256 要求至少 32 字节）
+    jwt-secret: feiji-cloud-dev-jwt-secret-change-in-production-32bytes!
+    jwt-expire-hours: 24
+  mqtt:
+    enabled: true
+    host: tcp://localhost:1883
+    client-id: feiji-cloud-server
+    username: ""
+    password: ""
+    keep-alive: 30
+    subscribe-topics:
+      - thing/product/+/osd
+      - thing/product/+/state
+      - thing/product/+/events
+      - thing/product/+/services_reply
+      - sys/product/+/status
+      - thing/product/+/drc/up
+  osd:
+    # WebSocket 推送 OSD 的节流间隔（毫秒）
+    push-interval-ms: 1000
+    # OSD 快照在 Redis 的保留时长（小时），MVP 约定 7 天
+    osd-ttl-hours: 168
+  live:
+    enabled: true
+    # 设备可达的推流服务器（生产环境改为公网 IP/域名）
+    rtmp-host: localhost:1935
+    app: live
+    # 网页拉流基址（流媒体 HTTP 端口）
+    play-base-url: http://localhost:8080
+    zlm-url: http://localhost:8080
+    # 流媒体类型：zlm（ZLMediaKit）或 srs，播放地址规则不同
+    media-server-type: srs
+    # ZLM API 密钥，留空则跳过 close_streams 调用
+    zlm-secret: ""
+    reply-timeout-ms: 15000
+  wayline:
+    # KMZ 本地存储目录（二期可切 MinIO）
+    storage-dir: ./data/waylines
+    # 设备拉取 KMZ 的地址前缀（真机场景改为设备可达的 IP/域名）
+    download-base-url: http://localhost:6789

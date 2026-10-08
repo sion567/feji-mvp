@@ -1,0 +1,8 @@
+# 本地无 MySQL 时的演示模式：启动加 --spring.profiles.active=h2
+# 数据持久化到 ./data/feiji-h2.mv.db，结构与生产 MySQL 完全一致
+spring:
+  datasource:
+    url: jdbc:h2:file:./data/feiji-h2;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
