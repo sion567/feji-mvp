@@ -8,10 +8,12 @@
  *  - 周期上报直播能力 live_capacity_update
  *  - 应答 services 指令（live_start_push/live_stop_push 等，回 services_reply）
  *  - 收到开播指令后可选调用 ffmpeg 向下发地址推测试流（默认开启，--no-ffmpeg 关闭）
+ *  - --demo-alarm：循环演示安全告警（HMS 事件 → 低电量 → RTK 断连，每 45 秒切换一种）
  *
  * 用法:
  *   node mock-dock.mjs [--broker mqtt://localhost:1883] [--dock-sn MOCK-DOCK-001]
- *                      [--drone-sn MOCK-DRONE-001] [--lat 31.02] [--lng 121.44] [--no-ffmpeg]
+ *                      [--drone-sn MOCK-DRONE-001] [--lat 31.02] [--lng 121.44]
+ *                      [--no-ffmpeg] [--demo-alarm]
  */
 import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
@@ -29,6 +31,7 @@ const droneSn = arg('--drone-sn', 'MOCK-DRONE-001')
 const baseLat = parseFloat(arg('--lat', '31.02'))
 const baseLng = parseFloat(arg('--lng', '121.44'))
 const useFfmpeg = !args.includes('--no-ffmpeg')
+const demoAlarm = args.includes('--demo-alarm')
 
 const client = mqtt.connect(broker, { clientId: 'mock-dock-' + randomUUID().slice(0, 8) })
 let droneAngle = 0
@@ -107,14 +110,16 @@ function tick() {
   if (flying) {
     battery = Math.max(20, battery - 0.05)
   }
+  const batteryDip = Date.now() < batteryDipUntil
+  const rtkLoss = Date.now() < rtkLossUntil
   publish(`thing/product/${droneSn}/osd`, { tid: randomUUID(), bid: randomUUID(), timestamp: Date.now(), data: {
     mode_code: flying ? 5 : 0, gear: flying ? 1 : 0, latitude: droneLat, longitude: droneLng,
     height: flying ? droneAlt : 0, elevation: flying ? droneAlt - 12 : 0,
     horizontal_speed: flying ? 5.2 : 0, vertical_speed: 0.1,
     attitude_head: ((droneAngle * 180) / Math.PI + 90) % 360,
     home_distance: flying ? 380 : 0, wind_speed: 3.1, wind_direction: 120,
-    battery: { capacity_percent: Math.round(battery), remain_flight_time: 1100, return_home_power: 15, landing_power: 5 },
-    position_state: { gps_number: 18, is_fixed: true, quality: 5, rtk_number: 18 },
+    battery: { capacity_percent: batteryDip ? 12 : Math.round(battery), remain_flight_time: 1100, return_home_power: 15, landing_power: 5 },
+    position_state: { gps_number: 18, is_fixed: !rtkLoss, quality: rtkLoss ? 3 : 5, rtk_number: rtkLoss ? 0 : 18 },
     total_flight_time: 430, firmware_version: 'mock-1.0.0'
   } })
 }
@@ -142,6 +147,32 @@ function stopFfmpeg() {
   }
 }
 
+// ---- 安全告警演示（--demo-alarm）：45 秒一循环，依次 HMS 事件 / 低电量 / RTK 断连 ----
+let batteryDipUntil = 0
+let rtkLossUntil = 0
+let demoStep = 0
+
+function publishHmsEvent() {
+  publish(`thing/product/${droneSn}/events`, eventEnvelope('device_hms', { hms: [
+    { code: '0x16100086', created_at: Date.now(), host: 'DRONE', level: 2, module: 'battery', key: 'hms_0x16100086_bat_overheat' },
+    { code: '0x16220008', created_at: Date.now(), host: 'DRONE', level: 3, module: 'flight_control', key: 'hms_0x16220008_esc_err' }
+  ] }))
+  console.log('[mock] 演示：上报 device_hms 健康告警')
+}
+
+function cycleDemoAlarm() {
+  const step = demoStep++ % 3
+  if (step === 0) {
+    publishHmsEvent()
+  } else if (step === 1) {
+    batteryDipUntil = Date.now() + 8000
+    console.log('[mock] 演示：低电量（8 秒后恢复）')
+  } else {
+    rtkLossUntil = Date.now() + 8000
+    console.log('[mock] 演示：RTK 断连（8 秒后恢复）')
+  }
+}
+
 client.on('connect', () => {
   console.log(`[mock] 已连接 ${broker}, 机场=${dockSn}, 无人机=${droneSn}, ffmpeg推流=${useFfmpeg ? '开' : '关'}`)
   client.subscribe([
@@ -156,6 +187,10 @@ client.on('connect', () => {
   setInterval(publishOnline, 10000)
   setInterval(publishCapacity, 10000)
   setInterval(tick, 1000)
+  if (demoAlarm) {
+    setTimeout(cycleDemoAlarm, 15000)
+    setInterval(cycleDemoAlarm, 45000)
+  }
 })
 
 client.on('message', (topic, payload) => {

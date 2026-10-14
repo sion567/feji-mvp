@@ -14,6 +14,7 @@ import AppHeader from '../components/AppHeader.vue'
 import DeviceMap from '../components/DeviceMap.vue'
 import DeviceDetail from '../components/DeviceDetail.vue'
 import LivePanel from '../components/LivePanel.vue'
+import AlertFeed from '../components/AlertFeed.vue'
 
 const devices = ref<DeviceEntry[]>([])
 const osdBySn = ref<Record<string, any>>({})
@@ -273,6 +274,7 @@ async function onControl(x: number, y: number, z: number) {
           @draw-finish="onDrawFinish"
           @map-click="onMapClick"
         />
+        <AlertFeed />
       </main>
       <aside class="detail panel">
         <LivePanel :device="selected" :sessions="liveSessions" />
@@ -408,5 +410,6 @@ async function onControl(x: number, y: number, z: number) {
 .map-area {
   padding: 0;
   overflow: hidden;
+  position: relative;
 }
 </style>

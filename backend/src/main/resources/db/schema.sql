@@ -138,3 +138,17 @@ CREATE TABLE IF NOT EXISTS flight_telemetry (
     battery    INT,
     mode       VARCHAR(16)
 );
+
+-- 设备安全告警（HMS 事件 / DRC 上行 HMS / OSD 派生的低电量与 RTK 断连）
+CREATE TABLE IF NOT EXISTS device_alert (
+    id           BIGINT AUTO_INCREMENT PRIMARY KEY,
+    sn           VARCHAR(64) NOT NULL,
+    category     VARCHAR(16) NOT NULL,
+    level        VARCHAR(8) NOT NULL,
+    event_key    VARCHAR(100),
+    message      VARCHAR(500),
+    payload      TEXT,
+    occurred_at  BIGINT NOT NULL,
+    workspace_id BIGINT NOT NULL DEFAULT 1,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+);

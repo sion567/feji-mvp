@@ -81,7 +81,7 @@ cd frontend && npm install && npm run dev
 cd tools/mock-device && npm install && node mock-dock.mjs
 ```
 
-模拟 1 台 Dock 2 + 1 架 M3TD：周期上报 OSD（无人机绕机场飞行）、上下线拓扑、直播能力；收到开播指令后用 ffmpeg 向下发的 RTMP 地址推测试流（`--no-ffmpeg` 关闭）。可自定义 SN/坐标。
+模拟 1 台 Dock 2 + 1 架 M3TD：周期上报 OSD（无人机绕机场飞行）、上下线拓扑、直播能力；收到开播指令后用 ffmpeg 向下发的 RTMP 地址推测试流（`--no-ffmpeg` 关闭）。加 `--demo-alarm` 可循环演示安全告警（HMS 事件 → 低电量 → RTK 断连，每 45 秒切换）。可自定义 SN/坐标。
 
 ### 5. 验证
 
@@ -105,6 +105,7 @@ node frontend/scripts/ws-smoke.mjs ws://localhost:6789/ws/v1/messages
 - **飞行记录（架次）**：OSD 飞行状态跳变自动开闭架次——起飞/降落时间与位置、最大高度、里程（haversine 累计）、关联任务；架次内全量遥测 3 秒/点落库（`flight_telemetry`），飞行记录页可查列表并地图回放轨迹（起绿落红）；失联 10 分钟强制闭合作兜底
 - **合规报备**：任务报备状态（未报备/已报备/已批复+批复号）留痕并快照到架次；航线最大执行高度超 120 米时创建任务返回合规提醒（适飞空域超 120 米需提前 1 日 12 时前在民航局 UOM 平台申请飞行活动）。报备责任在运营单位，平台仅辅助留痕
 - **DRC 指令飞行**：选中设备后一键起飞、地图点击指点飞行（`drc_flyto`）、进入/退出 DRC（含周期心跳），方向键经 `drc/down` 发送摇杆轴量
+- **安全告警**：HMS 健康告警事件（`device_hms`/`device_exit_hms`）、DRC 飞行中 HMS 推送、OSD 派生的低电量（30% 警告 / 15% 严重，阈值下穿触发一次）与 RTK 断连/恢复自动转为告警：落库（`device_alert`）+ WebSocket 实时推送，大屏右上角告警面板可折叠查看，接口 `GET /api/v1/alerts`
 - **系统管理**（管理员可见）：用户管理（创建/删除/改角色）、工作空间、审计日志（登录/开播/改名等操作全留痕）
 
 ## 权限模型（MVP RBAC）
@@ -129,7 +130,7 @@ node frontend/scripts/ws-smoke.mjs ws://localhost:6789/ws/v1/messages
 ## DRC 指令飞行说明
 
 - 协议：`drc_enter`/`drc_exit`（services）→ 进入后周期向 `thing/product/{sn}/drc/down` 发心跳（开发默认 1 秒，真机按官方约 500ms 调整）；`drc_flyto`、`takeoff_to_point`（services）；摇杆 `drone_control`（x/y/z 轴量 -1024~1024，fire-and-forget）
-- `drc/up` 上行通道已订阅（仅日志），真机联调时补 ack/HMS 解析
+- `drc/up` 上行通道已订阅（HMS 推送已解析为告警；ack 消息仅日志）
 - 一键起飞缺省取设备当前定位作为起飞目标
 - 真机联调待验证点：摇杆轴量与方向的映射关系、心跳周期、drc/up 的 ack 处理
 - 直播能力（live_capacity_update 事件）已解析存储，开播时自动取设备上报的 camera_index
@@ -147,6 +148,7 @@ node frontend/scripts/ws-smoke.mjs ws://localhost:6789/ws/v1/messages
 3. **设备型号**：`DeviceModelEnum` 维护 `domain-type-subType`（如 `3-2-0`→DJI Dock 2、`0-91-1`→Matrice 3TD）与显示名映射。
 4. **上下线推送**：`sys/product/{sn}/status` 的 `data.online / data.offline`（含 sn、model、parent、child[] 拓扑），`DeviceStatusHandler` 解析后入册并同步子设备。
 5. **mode_code 中文标签**：`ModeCodeLabels`（无人机 0~14 官方枚举）。
+6. **安全告警事件**：`events` 的 `device_hms` / `device_exit_hms`（data.hms 数组，code/level/module/key，官方 level 0~3）与 DRC 上行 `hms` 推送解析为告警；OSD 派生低电量（battery.capacity_percent 下穿 30/15）与 RTK 断连（position_state.rtk_number/is_fixed 边沿）。告警统一落 `device_alert` 表并经 WS 推送（type=device_alert），查询接口 `GET /api/v1/alerts?sn=&level=&limit=`。
 
 模拟验证（mosquitto_pub 示例）：
 
@@ -157,6 +159,9 @@ mosquitto_pub -h localhost -t "sys/product/7CTDM3B00A0001/status" -m '{"tid":"t1
 mosquitto_pub -h localhost -t "thing/product/7CTDM3B00A0001/osd" -m '{"tid":"t2","bid":"b2","timestamp":1728259200001,"data":{"mode_code":0,"latitude":31.0203,"longitude":121.4402,"cover_state":0,"drone_in_dock":true,"job_number":128}}'
 # 无人机 OSD
 mosquitto_pub -h localhost -t "thing/product/1581F5BHD232Q00A85YB/osd" -m '{"tid":"t3","bid":"b3","timestamp":1728259200002,"gateway":"7CTDM3B00A0001","data":{"mode_code":5,"latitude":31.0215,"longitude":121.4415,"height":120.5,"horizontal_speed":8.5,"battery":{"capacity_percent":82}}}'
+
+# HMS 健康告警事件（官方格式，平台转告警并推送前端）
+mosquitto_pub -h localhost -t "thing/product/1581F5BHD232Q00A85YB/events" -m '{"tid":"t4","bid":"b4","timestamp":1728259200003,"method":"device_hms","data":{"hms":[{"code":"0x16100086","created_at":1728259200003,"host":"DRONE","level":2,"module":"battery","key":"hms_0x16100086_bat_overheat"}]}}'
 ```
 
 ## 地图瓦片

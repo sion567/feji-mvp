@@ -2,6 +2,7 @@ package com.feiji.cloud.device.handler;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.feiji.cloud.alert.AlertService;
 import com.feiji.cloud.cloudapi.device.OsdDock;
 import com.feiji.cloud.cloudapi.device.OsdDrone;
 import com.feiji.cloud.common.Vendors;
@@ -36,16 +37,19 @@ public class OsdHandler implements MqttTopicHandler {
     private final DeviceArchiveService archive;
     private final TrackService trackService;
     private final com.feiji.cloud.flight.FlightRecordService flightRecordService;
+    private final AlertService alertService;
 
     public OsdHandler(DeviceRegistryService registry, WsPushService wsPushService, ObjectMapper objectMapper,
                       DeviceArchiveService archive, TrackService trackService,
-                      com.feiji.cloud.flight.FlightRecordService flightRecordService) {
+                      com.feiji.cloud.flight.FlightRecordService flightRecordService,
+                      AlertService alertService) {
         this.registry = registry;
         this.wsPushService = wsPushService;
         this.objectMapper = objectMapper;
         this.archive = archive;
         this.trackService = trackService;
         this.flightRecordService = flightRecordService;
+        this.alertService = alertService;
     }
 
     @Override
@@ -92,6 +96,10 @@ public class OsdHandler implements MqttTopicHandler {
         registry.saveTelemetry(sn, telemetry);
         trackService.append(sn, telemetry);
         flightRecordService.onTelemetry(telemetry);
+        // 无人机才做低电量/RTK 断连派生告警（遥控器 OSD 字段不全）
+        if ("drone".equals(kind)) {
+            alertService.onDroneOsd(sn, drone);
+        }
         wsPushService.pushOsd(sn, kind, drone);
     }
 
