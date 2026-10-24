@@ -41,7 +41,7 @@ feiji/
 ## 技术栈
 
 - 后端：Java 17+（本机 JDK 25 已验证）、Spring Boot 3.3.x、MyBatis-Plus、Redis、Eclipse Paho（MQTT）、JJWT、springdoc
-- 前端：Vue 3.5、Vue Router 4、TypeScript、Vite 5、Leaflet 1.9（本机 Node 22 已验证）
+- 前端：Vue 3.5、Vue Router 4、TypeScript、Vite 5、Leaflet 1.9（2D 地图）、MapLibre GL 6（3D 轨迹回放，懒加载）（本机 Node 22 已验证）
 - 基础设施：EMQX 5（MQTT Broker）、MySQL 8、Redis 7、MinIO（对象存储）、ZLMediaKit（流媒体）
 
 ## 快速开始
@@ -103,6 +103,7 @@ node frontend/scripts/ws-smoke.mjs ws://localhost:6789/ws/v1/messages
 - **地图标绘**：大屏工具条绘制点位/折线/多边形（WGS-84 统一存储），侧栏标注列表可删除；二期按官方 element_group 结构同步给 Pilot 2
 - **地块管理**：地图绘制地块边界，自动计算面积（亩），维护编号/类别/种植内容等信息；大屏同步展示地块边界
 - **飞行记录（架次）**：OSD 飞行状态跳变自动开闭架次——起飞/降落时间与位置、最大高度、里程（haversine 累计）、关联任务；架次内全量遥测 3 秒/点落库（`flight_telemetry`），飞行记录页可查列表并地图回放轨迹（起绿落红）；失联 10 分钟强制闭合作兜底
+- **3D 轨迹回放**（`/track3d`）：MapLibre GL + 天地图影像，pitch 倾斜视角——按相对高度着色并竖直拉伸的轨迹帘幕、地面投影虚线、飞行点红色高度柱与无人机图标动画回放，控制条支持播放/倍速/拖动进度/跟随视角；入口在飞行记录页「3D 回放」与大屏设备详情「3D 轨迹」（设备轨迹取 Redis 环形列表，alt 按首点归一为相对高度）
 - **合规报备**：任务报备状态（未报备/已报备/已批复+批复号）留痕并快照到架次；航线最大执行高度超 120 米时创建任务返回合规提醒（适飞空域超 120 米需提前 1 日 12 时前在民航局 UOM 平台申请飞行活动）。报备责任在运营单位，平台仅辅助留痕
 - **DRC 指令飞行**：选中设备后一键起飞、地图点击指点飞行（`drc_flyto`）、进入/退出 DRC（含周期心跳），方向键经 `drc/down` 发送摇杆轴量
 - **安全告警**：HMS 健康告警事件（`device_hms`/`device_exit_hms`）、DRC 飞行中 HMS 推送、OSD 派生的低电量（30% 警告 / 15% 严重，阈值下穿触发一次）与 RTK 断连/恢复自动转为告警：落库（`device_alert`）+ WebSocket 实时推送，大屏右上角告警面板可折叠查看，接口 `GET /api/v1/alerts`

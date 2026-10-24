@@ -9,6 +9,7 @@ const router = createRouter({
     { path: '/waylines', component: () => import('./views/WaylinesView.vue') },
     { path: '/jobs', component: () => import('./views/JobsView.vue') },
     { path: '/flights', component: () => import('./views/FlightsView.vue') },
+    { path: '/track3d', component: () => import('./views/Track3DView.vue') },
     { path: '/plots', component: () => import('./views/PlotsView.vue') },
     { path: '/system', component: () => import('./views/SystemView.vue') }
   ]

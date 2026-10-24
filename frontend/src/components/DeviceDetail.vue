@@ -15,6 +15,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'toggle-track'): void
+  (e: 'open-3d'): void
   (e: 'drc-toggle'): void
   (e: 'takeoff'): void
   (e: 'flyto-toggle'): void
@@ -62,9 +63,12 @@ const rows = computed(() => {
   <div class="detail-panel">
     <div class="panel-title detail-header">
       <span>设备详情</span>
-      <button v-if="device" class="track-btn" @click="emit('toggle-track')">
-        {{ showTrack ? '隐藏轨迹' : '回放轨迹' }}
-      </button>
+      <span>
+        <button v-if="device && device.kind !== 'dock'" class="track-btn" @click="emit('open-3d')">3D 轨迹</button>
+        <button v-if="device" class="track-btn" @click="emit('toggle-track')">
+          {{ showTrack ? '隐藏轨迹' : '回放轨迹' }}
+        </button>
+      </span>
     </div>
     <p v-if="!device" class="empty">点击地图上的设备或左侧列表查看详情。</p>
     <template v-else>

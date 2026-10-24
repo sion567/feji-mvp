@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { listDevices, getTrack, type DeviceEntry, type TrackPoint } from '../api/deviceApi'
 import { listLives, type LiveSessionView } from '../api/liveApi'
 import {
@@ -29,6 +30,7 @@ const flytoMode = ref(false)
 const drcActiveMap = ref<Record<string, boolean>>({})
 const mapComp = ref<InstanceType<typeof DeviceMap>>()
 const { subscribe } = useWs()
+const router = useRouter()
 
 const selected = computed(() => devices.value.find((d) => d.sn === selectedSn.value) ?? null)
 const selectedOsd = computed(() => (selectedSn.value ? osdBySn.value[selectedSn.value] : null))
@@ -126,6 +128,10 @@ async function toggleTrack() {
   } else {
     trackPoints.value = []
   }
+}
+
+function open3D() {
+  if (selectedSn.value) router.push({ path: '/track3d', query: { sn: selectedSn.value } })
 }
 
 // ---- 地图标绘 ----
@@ -286,6 +292,7 @@ async function onControl(x: number, y: number, z: number) {
           :flyto-mode="flytoMode"
           :can-op="canOperate()"
           @toggle-track="toggleTrack"
+          @open-3d="open3D"
           @drc-toggle="onDrcToggle"
           @takeoff="onTakeoff"
           @flyto-toggle="toggleFlyto"

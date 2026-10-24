@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import L from 'leaflet'
 import { tdtBaseLayers } from '../lib/tdt'
 import {
@@ -22,6 +23,11 @@ let trackLayer: L.LayerGroup | null = null
 
 const statusLabel: Record<string, string> = { FLYING: '飞行中', CLOSED: '已结束' }
 const reportLabel: Record<string, string> = { NONE: '未报备', FILED: '已报备', APPROVED: '已批复' }
+const router = useRouter()
+
+function go3D() {
+  if (selected.value) router.push({ path: '/track3d', query: { flight: String(selected.value.id) } })
+}
 
 async function refresh() {
   try {
@@ -151,6 +157,7 @@ const summary = computed(() => {
             架次 #{{ selected.id }} · {{ selected.droneSn }}
             <template v-if="selected.jobName"> · 任务「{{ selected.jobName }}」</template>
             <template v-if="loadingTrack"> · 轨迹加载中…</template>
+            <button v-if="points.length > 1" class="btn-3d" @click="go3D">3D 回放</button>
           </template>
           <template v-else>点击左侧架次查看飞行轨迹</template>
         </div>
@@ -226,6 +233,16 @@ const summary = computed(() => {
   padding: 10px 12px;
   color: var(--muted);
   font-size: 12px;
+}
+.btn-3d {
+  margin-left: 10px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 8px;
 }
 .map-wrap {
   flex: 1;
