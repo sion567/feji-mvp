@@ -5,6 +5,7 @@ import { tdtBaseLayers } from '../lib/tdt'
 import type { DeviceEntry, TrackPoint } from '../api/deviceApi'
 import type { MapElementView } from '../api/mapApi'
 import type { PlotView } from '../api/plotApi'
+import type { RoutePointInput, RoutePointView } from '../api/routeApi'
 
 const props = defineProps<{
   devices: DeviceEntry[]
@@ -15,12 +16,16 @@ const props = defineProps<{
   plots?: PlotView[]
   drawMode?: 'POINT' | 'LINE' | 'POLYGON' | null
   flytoMode?: boolean
+  routeMode?: boolean
+  routeDraft?: RoutePointInput[]
+  routePreview?: RoutePointView[] | null
 }>()
 
 const emit = defineEmits<{
   (e: 'select', sn: string): void
   (e: 'draw-finish', coordinates: [number, number][]): void
   (e: 'map-click', lat: number, lng: number): void
+  (e: 'route-click', lat: number, lng: number): void
 }>()
 
 const mapEl = ref<HTMLElement>()
@@ -30,6 +35,7 @@ const markers = new Map<string, L.CircleMarker>()
 let elementLayer: L.LayerGroup | null = null
 let plotLayer: L.LayerGroup | null = null
 let draftLayer: L.LayerGroup | null = null
+let routeLayer: L.LayerGroup | null = null
 let draftPoints: [number, number][] = []
 
 onMounted(() => {
@@ -42,6 +48,7 @@ onMounted(() => {
   elementLayer = L.layerGroup().addTo(map)
   plotLayer = L.layerGroup().addTo(map)
   draftLayer = L.layerGroup().addTo(map)
+  routeLayer = L.layerGroup().addTo(map)
   map.on('click', onMapClick)
   syncMarkers()
   drawElements()
@@ -71,6 +78,10 @@ function onMapClick(event: L.LeafletMouseEvent) {
   }
   if (props.flytoMode) {
     emit('map-click', lat, lng)
+    return
+  }
+  if (props.routeMode) {
+    emit('route-click', lat, lng)
   }
 }
 
@@ -213,6 +224,60 @@ watch(
 
 watch(
   () => props.flytoMode,
+  (mode) => {
+    if (map) {
+      map.getContainer().style.cursor = mode ? 'crosshair' : ''
+    }
+  }
+)
+
+// ---- 选点航线：采点草稿 + 排序预览 ----
+
+/** 采点中：按点击顺序画琥珀色虚线与序号 */
+watch(
+  () => props.routeDraft,
+  (points) => {
+    if (!routeLayer) return
+    routeLayer.clearLayers()
+    if (props.routePreview || !points?.length) return
+    points.forEach((p, i) => {
+      L.circleMarker([p.lat, p.lng], { radius: 5, color: '#fbbf24', fillOpacity: 1 })
+        .bindTooltip(`选点 ${i + 1}`)
+        .addTo(routeLayer!)
+    })
+    if (points.length > 1) {
+      L.polyline(
+        points.map((p) => [p.lat, p.lng] as [number, number]),
+        { color: '#fbbf24', dashArray: '6 4', weight: 2 }
+      ).addTo(routeLayer!)
+    }
+  },
+  { deep: true }
+)
+
+/** 预览：按优化后顺序画青色实线与序号，并适配视野 */
+watch(
+  () => props.routePreview,
+  (points) => {
+    if (!routeLayer) return
+    routeLayer.clearLayers()
+    if (!points?.length) return
+    points.forEach((p, i) => {
+      L.circleMarker([p.lat, p.lng], { radius: 6, color: '#38bdf8', fillColor: '#38bdf8', fillOpacity: 1 })
+        .bindTooltip(`航点 ${i + 1}（原选点 ${p.sourceIndex + 1}）`)
+        .addTo(routeLayer!)
+    })
+    const line = L.polyline(
+      points.map((p) => [p.lat, p.lng] as [number, number]),
+      { color: '#38bdf8', weight: 3, opacity: 0.9 }
+    ).addTo(routeLayer!)
+    map?.fitBounds(line.getBounds(), { padding: [30, 30] })
+  },
+  { deep: true }
+)
+
+watch(
+  () => props.routeMode,
   (mode) => {
     if (map) {
       map.getContainer().style.cursor = mode ? 'crosshair' : ''

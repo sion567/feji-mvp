@@ -8,6 +8,7 @@ import {
 } from '../api/mapApi'
 import { listPlots, type PlotView } from '../api/plotApi'
 import { drcEnter, drcExit, drcFlyTo, drcTakeoff, drcControl, drcState } from '../api/drcApi'
+import { planRoute, composeRoute, type RoutePointInput, type RoutePlanResponse } from '../api/routeApi'
 import { canOperate } from '../api/auth'
 import { useWs } from '../ws/wsClient'
 import { kindLabel } from '../lib/device'
@@ -27,6 +28,10 @@ const showTrack = ref(false)
 const trackPoints = ref<TrackPoint[]>([])
 const drawMode = ref<'POINT' | 'LINE' | 'POLYGON' | null>(null)
 const flytoMode = ref(false)
+const routeMode = ref(false)
+const routeDraft = ref<RoutePointInput[]>([])
+const routePreview = ref<RoutePlanResponse | null>(null)
+const routeBusy = ref(false)
 const drcActiveMap = ref<Record<string, boolean>>({})
 const mapComp = ref<InstanceType<typeof DeviceMap>>()
 const { subscribe } = useWs()
@@ -139,6 +144,7 @@ function open3D() {
 function setDrawMode(mode: 'POINT' | 'LINE' | 'POLYGON' | null) {
   drawMode.value = drawMode.value === mode ? null : mode
   flytoMode.value = false
+  routeMode.value = false
 }
 
 async function onDrawFinish(coordinates: [number, number][]) {
@@ -168,10 +174,87 @@ async function onDeleteElement(el: MapElementView) {
 function toggleFlyto() {
   flytoMode.value = !flytoMode.value
   drawMode.value = null
+  routeMode.value = false
+}
+
+/** DRC 与选点航线共用的目标设备 SN（机巢场景取 parentSn，与 DRC 同源） */
+function targetSn(): string | null {
+  return selected.value ? selected.value.parentSn || selected.value.sn : null
+}
+
+// ---- 选点航线（选点 → 排序预览 → 生成 KMZ 入库） ----
+
+function toggleRouteMode() {
+  routeMode.value = !routeMode.value
+  drawMode.value = null
+  flytoMode.value = false
+  if (!routeMode.value) clearRoute()
+}
+
+function onRouteClick(lat: number, lng: number) {
+  routePreview.value = null
+  routeDraft.value = [...routeDraft.value, { lat, lng }]
+}
+
+function clearRoute() {
+  routeDraft.value = []
+  routePreview.value = null
+}
+
+async function previewRoute() {
+  const sn = targetSn()
+  if (!sn) {
+    alert('请先在左侧选择设备')
+    return
+  }
+  if (!routeDraft.value.length) {
+    alert('请先点击地图选择航点')
+    return
+  }
+  routeBusy.value = true
+  try {
+    routePreview.value = await planRoute(sn, routeDraft.value)
+  } catch (e) {
+    alert(e instanceof Error ? e.message : '排序预览失败')
+  } finally {
+    routeBusy.value = false
+  }
+}
+
+async function generateRoute() {
+  const sn = targetSn()
+  if (!sn) {
+    alert('请先在左侧选择设备')
+    return
+  }
+  if (!routeDraft.value.length) {
+    alert('请先点击地图选择航点')
+    return
+  }
+  const name = prompt('航线名称：')
+  if (!name) return
+  const heightInput = prompt('统一飞行高度（米，5~1500）：', '80')
+  if (heightInput == null) return
+  const height = Number(heightInput)
+  if (!Number.isFinite(height)) {
+    alert('高度必须是数字')
+    return
+  }
+  routeBusy.value = true
+  try {
+    const file = await composeRoute(sn, name, routeDraft.value, height)
+    clearRoute()
+    routeMode.value = false
+    alert(`航线「${file.name}」已入航线库（ID ${file.id}），可在「任务管理」页下发执行`)
+  } catch (e) {
+    alert(e instanceof Error ? e.message : '生成航线失败')
+  } finally {
+    routeBusy.value = false
+  }
 }
 
 async function onMapClick(lat: number, lng: number) {
-  const sn = selected.value ? selected.value.parentSn || selected.value.sn : null
+  const sn = targetSn()
   if (!sn) return
   try {
     await drcFlyTo(sn, lat, lng, 60)
@@ -182,7 +265,7 @@ async function onMapClick(lat: number, lng: number) {
 }
 
 async function onDrcToggle() {
-  const sn = selected.value ? selected.value.parentSn || selected.value.sn : null
+  const sn = targetSn()
   if (!sn) return
   try {
     if (selectedDrcActive.value) {
@@ -196,7 +279,7 @@ async function onDrcToggle() {
 }
 
 async function onTakeoff() {
-  const sn = selected.value ? selected.value.parentSn || selected.value.sn : null
+  const sn = targetSn()
   if (!sn) return
   const height = prompt('一键起飞高度（米）：', '30')
   if (height == null) return
@@ -208,7 +291,7 @@ async function onTakeoff() {
 }
 
 async function onControl(x: number, y: number, z: number) {
-  const sn = selected.value ? selected.value.parentSn || selected.value.sn : null
+  const sn = targetSn()
   if (!sn) return
   try {
     await drcControl(sn, x, y, z)
@@ -228,8 +311,24 @@ async function onControl(x: number, y: number, z: number) {
       <button :class="{ on: drawMode === 'POLYGON' }" @click="setDrawMode('POLYGON')">多边形</button>
       <button v-if="drawMode === 'LINE' || drawMode === 'POLYGON'" @click="mapComp?.finishDraw()">完成</button>
       <button v-if="drawMode" @click="mapComp?.cancelDraw(); drawMode = null">取消</button>
+      <span class="bar-divider"></span>
+      <button :class="{ on: routeMode }" :disabled="!canOperate()" @click="toggleRouteMode">选点航线</button>
+      <template v-if="routeMode">
+        <button :disabled="routeBusy || !routeDraft.length" @click="previewRoute">预览排序</button>
+        <button :disabled="routeBusy || !routeDraft.length" @click="generateRoute">生成航线</button>
+        <button :disabled="routeBusy" @click="clearRoute">清空</button>
+      </template>
       <span class="hint" v-if="drawMode">
         {{ drawMode === 'POINT' ? '点击地图放置点位' : '点击地图采点，完成后保存' }}
+      </span>
+      <span class="hint" v-else-if="routeMode">
+        {{
+          routePreview
+            ? `已优化 ${routePreview.orderedPoints.length} 点 · ${(routePreview.totalDistanceMeters / 1000).toFixed(2)} km · ${
+                routePreview.strategy === 'BRUTE_FORCE' ? '全局最优' : '近优排序'
+              }`
+            : `点击地图选点（已选 ${routeDraft.length} 点），需先在左侧选择设备`
+        }}
       </span>
     </div>
     <div class="layout">
@@ -276,9 +375,13 @@ async function onControl(x: number, y: number, z: number) {
           :plots="plotList"
           :draw-mode="drawMode"
           :flyto-mode="flytoMode"
+          :route-mode="routeMode"
+          :route-draft="routeDraft"
+          :route-preview="routePreview?.orderedPoints ?? null"
           @select="select"
           @draw-finish="onDrawFinish"
           @map-click="onMapClick"
+          @route-click="onRouteClick"
         />
         <AlertFeed />
       </main>
@@ -324,6 +427,16 @@ async function onControl(x: number, y: number, z: number) {
 .draw-bar button.on {
   border-color: var(--accent);
   color: var(--accent);
+}
+.draw-bar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.bar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  margin: 0 4px;
 }
 .draw-bar .hint {
   color: var(--muted);
